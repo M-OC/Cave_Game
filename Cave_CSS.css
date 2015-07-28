@@ -1,0 +1,128 @@
+#gameWindow
+{
+	background-color: black;
+}
+
+#creatureBar
+{
+	background-color: #aaa;
+	cursor: default;
+}
+
+#creatureIcon .ui-selecting
+{
+	background: orange;
+}
+
+#creatureIcon .ui-selected
+{
+	background: #555;
+}
+
+
+#cave
+{
+	background-image: url(Cave.jpg);
+	background-color:grey;
+	border:solid 1px black;
+}
+
+#cave td 
+{
+	height:5px;
+	width:5px;
+	/*border-left:1px solid black;
+	border-top:1px solid black;*/
+}
+
+#cave td:hover
+{
+	background-color: white;
+}
+
+.rock
+{
+	background-color: #533;
+	border-left: dotted 1px #422;
+	border-top: dotted 1px #422;
+}
+
+.lighted
+{
+	opacity: .3;
+}
+
+.empty
+{
+	background-color: black;
+	border:none;
+	opacity:.7;
+}
+
+.water
+{
+	background-color: #33b;
+}
+
+.entrance
+{
+	background-color: white;
+}
+
+.lichen
+{
+	background-color: #ada;
+}
+
+.moth
+{
+	background-color: #777;
+	border:solid 1px #222;
+}
+
+.wasp
+{
+	background-color: yellow;
+	border: solid black 2px;
+}
+
+.waspNest
+{
+	background-color: #ccc;
+	border: none;
+}
+
+.waspNestOpening
+{
+	background-color: #555;
+	border: solid black 1px;
+}
+
+.mothEgg
+{
+	background-color: yellow;
+}
+
+.beetle 
+{
+	background-color: #955;
+	border:solid 1px black;
+}
+
+.beetleEgg
+{
+	background-color: orange;
+	border: solid 1px yellow;
+}
+
+.cricket
+{
+	background-color: darkgreen;
+	border: solid 1px orange;
+}
+
+.cricketEgg
+{
+	background-color: yellow;
+	border:solid 1px darkgreen;
+}

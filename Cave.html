@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script type="text/javascript" src="bower_components/angular/angular.min.js"></script>
+		<link rel="stylesheet" type="text/css" href="Cave_CSS.css">
+		<link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/css/bootstrap.min.css">
+		<link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/bootstrap-theme.min.css">
+		<title>Cavern</title>
+	</head>
+	<body>
+		<div class="container">
+			<div class="row">
+				<div class="col-xs-12 bg-success">
+					<h1 id="title">Cavern</h1>
+					<h4> An angular-based simulation inspired by the 'terrarium' exercise in Eloquent Javascript</h4>
+				</div>
+			</div>
+			<div data-ng-app="clairmontCavern" data-ng-controller="cavernController">
+				<div class="row">
+					<div class="col-xs-12" id="gameWindow">
+						<table id="cave">
+							<tr ng-repeat="r in tableArray">
+								<td ng-repeat="c in r" ng-class="c.occupant.species" ng-click="insertCreature(c,select,tableArray)">{{  }}</td>
+							</tr>
+						</table>
+					</div>
+				</div>
+				<div class="row" id="creatureBar">
+					<form id="creatureSelect">
+					<div class="col-xs-2 text-center">
+						Lichen <input type="radio" value="lichen" ng-model="select">
+					</div>
+					<div class="col-xs-2 text-center">
+						Moth <input type="radio" value="moth" ng-model="select">
+					</div>
+					<div class="col-xs-2 text-center">
+						Wasp <input type="radio" value="wasp" ng-model="select">
+					</div>
+					<div class="col-xs-2 text-center">
+						Beetle <input type="radio" value="beetle" ng-model="select">
+					</div>
+					<div class="col-xs-2 text-center">
+						Cricket <input type="radio" value="cricket" ng-model="select">
+					</div>
+					</form>
+				</div>
+				
+				<button ng-click="step(register, tableArray)">STEP</button>
+				<button ng-click="begin()">START</button>
+				<button ng-click="stop()">STOP</button>
+				{{ register.length }}
+			</div>
+		</div>
+
+<script type="text/javascript" src="bower_components/jquery/dist/jquery.js"></script>
+<script type="text/javascript" src="bower_components/jquery-ui/jquery-ui.min.js"></script>
+<script type="text/javascript">
+//Inert spaces
+function creature_empty()
+{
+	this.species = "empty";
+};
+function creature_entrance()
+{
+	this.species = "entrance";
+};
+function creature_water()
+{
+	this.species = "water";
+};
+function creature_rock()
+{
+	this.species = "rock";
+};
+
+//Active spaces
+function creature_lichen()
+{
+	this.species = "lichen";
+	this.energy = Math.floor(Math.random() * 5);
+};
+function creature_moth()
+{
+	this.species = "moth";
+	this.energy = Math.floor(Math.random() * 30) + 20;
+};
+function creature_mothEgg()
+{
+	this.species = "mothEgg";
+	this.energy = 0;
+};
+function creature_beetle()
+{
+	this.species = "beetle";
+	this.heading = Math.floor(Math.random() * 20) > 10 ? this.up : this.down;
+	this.counter = 0;
+	this.food = 0;
+};
+creature_beetle.prototype.up = {W:"",NW:"",N:"",NE:"",E:""};
+creature_beetle.prototype.down = {W:"",SW:"",S:"",SE:"",E:""};
+function creature_beetleEgg()
+{
+	this.species = "beetleEgg";
+	this.energy = 0;
+};
+function creature_cricket()
+{
+	this.species = "cricket";
+	this.heading = Math.floor(Math.random() * 40) > 20 ? this.up : this.down;
+	this.food = 0;
+	this.counter = 0;
+};
+creature_cricket.prototype.up = {W:"",NW:"",N:"",NE:"",E:""};
+creature_cricket.prototype.down = {W:"",SW:"",S:"",SE:"",E:""};
+function creature_cricketEgg()
+{
+	this.species = "cricketEgg";
+	this.energy = 0;
+};
+function creature_wasp()
+{
+	this.stuckCounter = 0;
+	this.goTo = undefined;
+	this.counter = 20;
+	this.species = 'wasp';
+	this.food = 0;
+	this.hasWater = false;
+};
+creature_wasp.prototype.nestLocation = undefined;
+
+function creature_waspNest()
+{
+	this.species = 'waspNest'
+};
+function creature_waspNestOpening()
+{
+	this.species = 'waspNestOpening';
+	this.food = 0;
+	this.energy = 0;
+};
+
+
+//Table Spaces and associated methods.
+function tableSpace(indexNo, row, column, occupant)
+{
+	this.indexNo = indexNo;
+	this.position = {x:column, y:row};
+	this.occupant = new occupant;
+};
+
+tableSpace.prototype.changeOccupant = function(input)
+{
+	this.occupant = input;
+};
+
+//Checks the tableSpace's surroundings and returns an array containing the coordinates of neighbors with a specified type of occupant.
+tableSpace.prototype.checkSurroundings = function(preference, table, constraints)
+{
+	var result = [];
+	var X;
+	var Y;
+	if(arguments.length === 3)
+	{
+		for(var D in constraints)
+		{
+			X = this.position.x + directions[D][0];
+			Y = this.position.y + directions[D][1];
+			if(table[Y][X].occupant.species === preference)
+			{
+				result.push({x:X, y:Y});
+			};
+		};
+	}
+	else
+	{
+		for(var D in directions)
+		{
+			X = this.position.x + directions[D][0];
+			Y = this.position.y + directions[D][1];
+			if(table[Y][X].occupant.species === preference)
+			{
+				result.push({x:X, y:Y});
+			};
+		};
+	};
+	return result;
+};
+
+
+//Checks the creature register for nearby spaces with a given type of occupant. The distance can be defined.
+tableSpace.prototype.scanFor = function(preference, table, distance, register)
+{
+	var results = [];
+	var xDistance;
+	var yDistance;
+	for(var i = 0; i < register.length; i++)
+	{
+		xDistance = register[i].x < this.position.x ? register[i].x - this.position.x : this.position.x - register[i].x;
+		yDistance = register[i].y < this.position.y ? register[i].y - this.position.y : this.position.y - register[i].y;
+		if(xDistance <= distance && yDistance <= distance)
+		{
+			if(table[register[i].y][register[i].x].occupant.species === preference)
+			{
+				results.push(register[i]);
+			};
+		};	
+	};
+	return results;
+};
+
+//Takes an array of nearby positions of a given type (generally 'empty') and selects one at random, transferring the tableSpace's data to the chosen position and replacing the current position with an occupant of a given type.
+tableSpace.prototype.move = function(surroundings, table, replacement)
+{
+	var replacement = replacement || creature_empty;
+	var target = surroundings[Math.floor(Math.random() * surroundings.length)];
+	if(target.x !== undefined)
+	{	
+		table[target.y][target.x].changeOccupant(this.occupant);
+		this.occupant = new replacement;
+		removeReg(this.position, target);
+	};
+};
+
+//Similar to 'move', transfers the occupant to a nearby space. The target resulting space is chosen from an array of surrounding locations by it's proximity to 'target'.
+tableSpace.prototype.moveTowards = function(surroundings, target, table)
+{
+	var xDistance = this.position.x < target.x ? target.x - this.position.x : this.position.x - target.x;
+	var yDistance = this.position.y < target.y ? target.y - this.position.y : this.position.y - target.y;
+	var closerX;
+	var closerY;
+	var choice;
+	var results = [];
+	for(var i = 0; i < surroundings.length; i++)
+	{
+		closerX = surroundings[i].x < target.x ? target.x - surroundings[i].x : surroundings[i].x - target.x;
+		closerY = surroundings[i].y < target.y ? target.y - surroundings[i].y : surroundings[i].y - target.y;
+		if(closerX <= xDistance && closerY <= yDistance)
+		{
+			results.push(surroundings[i]);
+		};
+	};
+	if(results.length >= 1)
+	{
+		choice = results[Math.floor(Math.random() * results.length)];
+	}
+	else
+	{
+		choice = surroundings[Math.floor(Math.random() * surroundings.length)];
+	}
+	table[choice.y][choice.x].changeOccupant(this.occupant);
+	this.occupant = new creature_empty;
+	removeReg(this.position, choice);
+};
+
+//Generates a new creature on a bordering space.
+tableSpace.prototype.grow = function(surroundings, table, type, preference)
+{
+	var preference = preference || "empty";
+	var result;
+	for(var i = 0; i < surroundings.length; i++)
+	{
+		result = table[surroundings[i].y][surroundings[i].x].checkSurroundings(preference, table);
+		if(result.length >= 1)
+		{
+			table[surroundings[i].y][surroundings[i].x].occupant = new type;
+			creatureRegister.push(table[surroundings[i].y][surroundings[i].x].position);
+			break;
+		};
+	};
+};
+
+//Similar to 'move', only it constrains the available spaces to those that border a space that contains the 'rock' or 'lichen' value of the 'species' key.
+tableSpace.prototype.crawl = function(surroundings, table)
+{
+	var surroundings = surroundings || [];
+	var check;
+	var results = [];
+	var target;
+	for(var i = 0; i < surroundings.length; i++)
+	{
+		check = table[surroundings[i].y][surroundings[i].x].checkSurroundings("rock", table);
+		if(check.length === 0)
+		{
+			check = table[surroundings[i].y][surroundings[i].x].checkSurroundings("lichen", table);
+		};
+		if(check.length >= 1)
+		{
+			results.push(surroundings[i]);
+		};
+	};
+	if(results.length >= 1)
+	{
+		target = results[Math.floor(Math.random() * results.length)];
+		table[target.y][target.x].changeOccupant(this.occupant);
+		this.occupant = new creature_empty;
+		removeReg(this.position, target);
+	};
+};
+
+//Where efficiency and clarity go to die. This function is the root of the game. It is repeatedly called on registered tablespaces.  Checks occupant's species value and carries out behaviors accordingly.	
+tableSpace.prototype.act = function()
+{
+	var directions;
+	var random;
+
+	//Lichen behaviors.
+	if(this.occupant.species === "lichen")
+	{
+		this.occupant.energy++;
+		if(this.occupant.energy >= 45)
+		{
+			this.occupant.energy = 1;
+			directions = this.checkSurroundings("empty",map) || undefined;
+			if(directions)
+			{
+				this.grow(directions, map, creature_lichen, "rock");
+			};
+		};
+	}
+	//Moth behaviors.
+	else if(this.occupant.species === "moth")
+	{
+		this.occupant.energy++;
+		if(this.occupant.energy >= 170)
+		{
+			if(this.checkSurroundings("rock",map).length > 0)
+			{
+				directions = this.checkSurroundings("empty", map) || undefined;
+				this.grow(directions, map, creature_mothEgg, "rock");
+				this.occupant.energy = 1;
+			}
+			else
+			{
+				directions = this.checkSurroundings("empty",map,{NW:"",N:"",NE:""}) || undefined;
+				this.move(directions, map);
+			}
+		}
+		else if(this.occupant.energy <= 40)
+		{
+			directions = this.checkSurroundings("empty", map,{SW:"",S:"",SE:""});
+			this.move(directions, map);
+		}
+		else
+		{
+			directions = this.checkSurroundings("empty",map) || undefined;
+			this.move(directions, map);
+		}
+	}
+	//Beetle behaviors.
+	else if(this.occupant.species === "beetle")
+	{
+		if(this.occupant.food <= 25 && this.checkSurroundings('lichen',map).length > 0)
+		{
+			this.occupant.food++;
+			directions = this.checkSurroundings('lichen',map);
+			random = Math.floor(Math.random() * directions.length);
+			directions = [directions[random]];
+			removeReg(directions[0]);
+			this.move(directions, map);
+		}
+		else if(this.occupant.food > 20)
+		{
+			this.occupant.food = 0;
+			directions = this.checkSurroundings('empty',map);
+			this.grow(directions, map, creature_beetleEgg, 'rock');
+		}
+		else
+		{	
+			directions = this.checkSurroundings('empty',map,this.occupant.heading) || undefined;
+			if(directions.length <= 1)
+			{
+				this.occupant.heading = this.occupant.heading === this.occupant.up ? this.occupant.down : this.occupant.up;
+				this.occupant.counter = 0;
+				directions = this.checkSurroundings('empty',map) || undefined;
+			}
+			else if(directions.length === 5 && this.checkSurroundings('empty',map).length === 7 || this.checkSurroundings('beetle',map,{N:"",W:"",E:"",S:""}).length > 0)
+			{
+				random = Math.floor(Math.random() * 1);
+				if(this.occupant.counter > 4)
+				{
+					this.occupant.heading = this.occupant.heading === this.occupant.up ? this.occupant.down : this.occupant.up;
+					this.occupant.counter = 0;
+				};
+				this.occupant.counter++;
+				this.occupant.counter = this.occupant.counter + random;
+			}
+			this.crawl(directions,map);
+		};
+	}
+	//Wasp behaviors.
+	else if(this.occupant.species === "wasp")
+	{
+		if(this.occupant.goTo !== undefined && this.position.x === this.occupant.goTo.x && this.position.y === this.occupant.goTo.y)
+		{
+			this.occupant.goTo = undefined;
+		};
+
+		if(this.checkSurroundings('water',map).length > 0)
+		{
+			directions = this.checkSurroundings('water',map);
+			this.occupant.hasWater = true;
+		};
+
+		if(this.checkSurroundings('moth',map).length > 0)
+		{
+			this.occupant.food++;
+			this.occupant.goTo = undefined;
+			this.occupant.stuckCounter = 0;
+			directions = this.checkSurroundings('moth',map);
+			random = Math.floor(Math.random() * directions.length);
+			directions = [directions[random]];
+			removeReg(directions[0]);
+			this.move(directions, map);
+		}
+		else if(this.occupant.food > 3 && this.occupant.hasWater === true)
+		{
+			if(this.checkSurroundings('waspNestOpening',map).length > 0)
+			{
+				map[this.occupant.nestLocation.y][this.occupant.nestLocation.x].occupant.food++;
+				this.occupant.food = 0;
+				this.occupant.hasWater = false;
+				this.occupant.counter = 15;
+			}
+			else if(this.occupant.nestLocation !== undefined)
+			{
+				directions = this.checkSurroundings('empty', map);
+				this.moveTowards(directions, this.occupant.nestLocation, map);
+			}
+			else
+			{
+				if(this.checkSurroundings('rock',map,{NW:'',N:'',NE:''}).length > 0 && this.position.y < 60)
+				{
+					directions = this.checkSurroundings('empty',map);
+					this.grow(directions, map, creature_waspNestOpening, 'rock');
+					this.occupant.hasWater = false;
+					this.occupant.food = 0;
+				}
+				else
+				{
+					directions = this.checkSurroundings('empty',map,{NW:"",N:"",NE:""});
+					this.move(directions,map);	
+				};
+			};
+		}
+		else if(this.occupant.food > 3 && this.occupant.hasWater === false)
+		{
+			if(this.occupant.counter < 1)
+			{
+				directions = this.checkSurroundings('empty',map,{SW:"",S:"",SE:""});
+				if(directions.length < 1)
+				{
+					this.occupant.counter = 30;
+					directions = this.checkSurroundings('empty',map,{NW:"",N:"",NE:""});
+				};
+			}
+			else
+			{
+				directions = this.checkSurroundings('empty',map,{NW:"",N:"",NE:""});
+				this.occupant.counter--;
+			};
+			this.move(directions,map);
+		}
+		else if(this.occupant.goTo === undefined && this.occupant.counter < 1 || this.occupant.stuckCounter > 65)
+		{
+			this.occupant.stuckCounter = 0;
+			directions = this.checkSurroundings('empty',map);
+			random = this.scanFor('moth',map, 40, creatureRegister);
+			if(random.length > 0)
+			{
+				random = random[Math.floor(Math.random() * random.length)];
+				this.occupant.goTo = random;
+				this.moveTowards(directions, this.occupant.goTo, map);
+			}
+			else
+			{
+				this.occupant.goTo = undefined;
+				this.move(directions,map);
+			};
+		}
+		else
+		{
+			if(this.occupant.counter > 0)
+			{
+				this.occupant.counter--;
+				directions = this.checkSurroundings('empty',map,{SW:"",S:"",SE:""});
+				this.move(directions, map);
+			}
+			else
+			{
+				directions = this.checkSurroundings('empty',map);
+				this.occupant.stuckCounter++;
+				this.occupant.goTo === undefined ? this.move(directions, map) : this.moveTowards(directions, this.occupant.goTo, map);
+			};
+		};
+	}
+	//Cricket behaviors.
+	else if(this.occupant.species === 'cricket')
+	{
+		if(this.occupant.food <= 150 && this.checkSurroundings('lichen',map).length > 0)
+		{
+			this.occupant.food++;
+			directions = this.checkSurroundings('lichen',map);
+			random = Math.floor(Math.random() * directions.length);
+			directions = [directions[random]];
+			removeReg(directions[0]);
+			this.move(directions, map);
+		}
+		else if(this.occupant.food <= 150 && this.checkSurroundings('beetle',map).length > 0)
+		{
+			this.occupant.food = this.occupant.food + 10;
+			directions = this.checkSurroundings('beetle',map);
+			random = Math.floor(Math.random() * directions.length);
+			directions = [directions[random]];
+			removeReg(directions[0]);
+			this.move(directions, map);
+		}
+		else if(this.occupant.food <= 150 && this.checkSurroundings('cricket',map).length > 0)
+		{
+			this.occupant.food = this.occupant.food + 20;
+			directions = this.checkSurroundings('cricket',map);
+			random = Math.floor(Math.random() * directions.length);
+			directions = [directions[random]];
+			removeReg(directions[0]);
+			this.move(directions, map);
+		}
+		else if(this.occupant.food > 150)
+		{
+			this.occupant.food = 0;
+			directions = this.checkSurroundings('empty',map);
+			this.grow(directions, map, creature_cricketEgg, 'rock');
+		}
+		else
+		{	
+			directions = this.checkSurroundings('empty',map,this.occupant.heading) || undefined;
+			if(directions.length <= 1)
+			{
+				this.occupant.heading = this.occupant.heading === this.occupant.up ? this.occupant.down : this.occupant.up;
+				this.occupant.counter = 0;
+				directions = this.checkSurroundings('empty',map) || undefined;
+			}
+			else if(directions.length === 5 && this.checkSurroundings('empty',map).length === 7)
+			{
+				if(this.occupant.counter > 3)
+				{
+					this.occupant.heading = this.occupant.heading === this.occupant.up ? this.occupant.down : this.occupant.up;
+					this.occupant.counter = 0;
+				};
+				this.occupant.counter++;
+			}
+			this.crawl(directions,map);
+		};
+	}
+	//Wasp Nest behaviors.
+	else if(this.occupant.species === 'waspNestOpening')
+	{
+		creature_wasp.prototype.nestLocation = this.position;
+		directions = this.checkSurroundings('empty',map);
+		if(directions.length < 1)
+		{
+			directions = this.checkSurroundings('waspNest',map,{SW:"",S:"",SE:""});
+			if(directions.length > 0)
+			{
+				this.move(directions,map,creature_waspNest);
+			}
+			else
+			{
+				directions = this.checkSurroundings('waspNest',map);
+				this.move(directions,map,creature_waspNest);
+			};
+		}
+		else if(this.occupant.food > 0)
+		{
+			this.occupant.energy++;
+			if(this.occupant.energy > 10)
+			{
+				this.occupant.food--;
+				this.occupant.energy = 0;
+				this.grow(directions, map, creature_waspNest, 'waspNestOpening');
+				directions = this.checkSurroundings('empty',map);
+				this.grow(directions, map, creature_wasp);
+			};
+		};
+	}
+	//Moth egg behaviors.
+	else if(this.occupant.species === "mothEgg")
+	{
+		this.occupant.energy++;
+		if(this.occupant.energy >= 35)
+		{
+			this.occupant = new creature_moth;
+			this.occupant.energy = 1;
+		};
+	}
+	//Beetle egg behaviors.
+	else if(this.occupant.species === 'beetleEgg')
+	{
+		this.occupant.energy++;
+		if(this.occupant.energy > 25)
+		{
+			this.occupant = new creature_beetle;
+			this.occupant.energy = 1;
+		};
+	}
+	//Cricket egg behaviors.
+	else if(this.occupant.species === 'cricketEgg')
+	{
+		this.occupant.energy++;
+		if(this.occupant.energy > 75)
+		{
+			this.occupant = new creature_cricket;
+			this.occupant.energy = 1;
+		};
+	};
+};
+
+
+//Produces the array #cave draws from.
+function primeArray(rows, columns)
+{
+	var result = [];
+	var indexNo = 0;
+	for(var y = 0; y < rows; y++)
+	{
+		result.push([]);
+		for(var x = 0; x < columns; x++)
+		{
+			result[y].push(new tableSpace(indexNo, y, x, creature_empty));
+			indexNo++;
+		};
+	};
+	return result;
+};
+
+//Removes positions that occur more than once in an array. Unused.
+function removeDuplicates(array)
+{
+	var results = array;
+	var occurances;
+	for(var i = 0; i < array.length; i++)
+	{
+		occurances = 0;
+		for(var c = 0; c < array.length; c++)
+		{
+			if(array[i].x === array[c].x && array[i].y === array[c].y)
+			{
+				occurances++;
+				if(occurances > 1)
+				{
+					results.splice(i, 1);
+				};
+			};
+		};
+	};
+	array = results;
+};
+
+//Iterates through the game array left to right, top to bottom.
+function scanTable(array, func)
+{
+	for(var y = 0; y < array.length; y++)
+	{
+		for(var x = 0; x < array[y].length; x++)
+		{
+			func(array[y][x], x, y, array);
+		};
+	};
+};
+
+//Iterates through the game array, right to left, bottom to top.
+function scanTableReverse(array, func)
+{
+	for(var y = array.length - 1; y > 0; y--)
+	{
+		for(var x = array[0].length - 1; x > 0; x--)
+		{
+			func(array[y][x], x, y, array);
+		};
+	};
+};
+
+//Frankenstein's monster. Assigns values to the array when the game initially loads.
+function createCave(array)
+{
+	var test;
+	var n;
+	for(var x = 0; x < array[0].length; x++)
+	{
+		array[0][x].occupant = new creature_rock;
+		array[array.length - 1][x].occupant = new creature_rock;
+	};
+	//Creates cave ceiling & wall.
+	scanTable(array, function(space, x, y, whole)
+	{
+		if(y > 0)
+		{
+			if(whole[y - 1][x].occupant.species === "rock" || x < 4 && whole[y][x-1].occupant.species === "rock")
+			{
+				n = Math.random();
+				if(x > 0)
+				{
+					if(whole[y - 1][x - 1].occupant.species === "rock")
+					{
+						n = n + 0.16;
+					};
+				};
+				if(x < whole[0].length - 1)
+				{
+					if(whole[y - 1][x + 1].occupant.species === "rock")
+					{
+						n = n + 0.16;
+					};
+				};
+				if(n >= 0.35 || x === 0)
+				{
+					space.occupant = new creature_rock;
+				};
+			};
+		};
+	});
+	//Creates cave floor.
+	scanTableReverse(array, function(space, x, y, whole)
+	{
+		if(y < whole.length - 1)
+		{
+			if(whole[y + 1][x].occupant.species === "rock")
+			{
+				n = Math.random();
+				if(x > 0)
+				{
+					if(whole[y + 1][x - 1].occupant.species === "rock")
+					{
+						n = n + 0.16;
+					};
+				};
+				if(x < whole[0].length - 1)
+				{
+					if(whole[y + 1][x + 1].occupant.species === "rock")
+					{
+						n = n + 0.16;
+					};
+				};
+				if(n >= 0.35)
+				{
+					space.occupant = new creature_rock;
+				};
+			};
+		};
+	});
+	//Creates cave entrance, water, and light.
+	scanTableReverse(array, function(space, x, y, whole)
+	{
+		//Sets up entrance
+		if(y < whole.length - 1 && y > 0)
+		{
+			if(x === whole[0].length - 1 && space.occupant.species === "empty")
+			{
+				if(whole[y][x - 1].occupant.species === "rock" || whole[y][x - 2].occupant.species === "rock" || whole[y][x - 3].occupant.species === "rock")
+				{
+					space.occupant = new creature_rock;
+				}
+				else
+				{
+					space.occupant = new creature_entrance;
+				};
+			};
+		}
+		//Seeds water spaces
+		if(y > whole.length - 10 && space.occupant.species === "empty")
+		{
+			test = space.checkSurroundings("rock", whole,{W:"",SW:"",S:"",SE:"",E:""});
+			if(test.length >= 5)
+			{
+				n = Math.random();
+				if(n > 0.2) 
+				{
+					space.occupant = new creature_water;
+				};
+			};
+		};
+		//Creates pools
+		if(y > whole.length - 30 && space.occupant.species === "empty")
+		{
+			if(space.checkSurroundings("rock", whole,{E:""}).length === 1)
+			{
+				if(space.checkSurroundings("water",whole,{SW:""}).length === 1)
+				{
+					space.occupant = new creature_water;
+				}
+			}
+			else if(space.checkSurroundings("water", whole,{E:""}).length === 1)
+			{
+				space.occupant = new creature_water;
+			};
+		};
+	});
+	//Fills in pools by eliminating remaining "empty" spaces. There's probably a hundred better ways of doing this.
+	scanTable(array, function(space, x, y, whole)
+	{
+		if(y > 60 && space.occupant.species === "empty")
+		{
+			test = space.checkSurroundings("water", whole,{NW:"",N:"",NE:"",E:"",W:""});
+			if(test.length >= 1)
+			{
+				space.occupant = new creature_water;
+			};
+		};
+	});
+};
+
+//Inserts creature into the array and pushes its location data into a register that will later be used as a reference. Creatures that are bound to surfaces must be placed next to a rock space.
+function insert(space, selection, context)
+{
+	if(selection === "lichen" && space.occupant.species === "empty" && space.checkSurroundings("rock",context).length > 0)
+	{
+		space.occupant = new creature_lichen;
+		creatureRegister.push(space.position);
+	};
+	if(selection === "moth" && space.occupant.species === "empty")
+	{
+		space.occupant = new creature_moth;
+		creatureRegister.push(space.position);
+	};
+	if(selection === "beetle" && space.occupant.species === "empty" && space.checkSurroundings("rock",context).length > 0)
+	{
+		space.occupant = new creature_beetle;
+		creatureRegister.push(space.position);
+	};
+	if(selection === "cricket" && space.occupant.species === "empty" && space.checkSurroundings("rock",context).length > 0)
+	{
+		space.occupant = new creature_cricket;
+		creatureRegister.push(space.position);
+	};
+	if(selection === 'wasp' && space.occupant.species === 'empty')
+	{
+		space.occupant = new creature_wasp;
+		creatureRegister.push(space.position);
+	};
+};
+
+//Removes target location from the register, replaces it with an alternative if one is provided.
+function removeReg(target, replacement)
+{
+	for(var i = 0; i < creatureRegister.length; i++)
+	{
+		if(creatureRegister[i].x === target.x && creatureRegister[i].y === target.y)
+		{
+			if(replacement)
+			{
+				creatureRegister.splice(i, 1, replacement);
+			}
+			else
+			{
+				creatureRegister.splice(i, 1);
+			};
+		};
+	};
+};
+
+//Calls every registered space's action function.
+function step(register, table)
+{
+	for(var i = 0; i < register.length; i++)
+	{
+		table[register[i].y][register[i].x].act();
+	};
+};
+
+var directions = {NW:[-1,-1], N:[0,-1], NE:[1,-1], E:[1,0], SE:[1,1], S:[0,1], SW:[-1,1], W:[-1,0]};
+var creatureRegister = [];
+var map;
+
+var app = angular.module('clairmontCavern', []);
+app.controller('cavernController', ['$scope', '$interval', function($scope, $interval)
+{
+	var register = $scope.register = creatureRegister;
+	var insertCreature = $scope.insertCreature = insert;
+	var select = $scope.select;
+	var caveMap = $scope.tableArray = map = primeArray(120, 220);
+	$scope.counter = 0;
+	var promise;
+	$scope.begin = function()
+	{
+		promise = $interval(function()
+		{
+			$scope.step($scope.register, $scope.tableArray)
+		}, 250);
+	};
+	$scope.stop = function()
+	{
+		$interval.cancel(promise);
+	};
+
+	createCave(caveMap);
+	$scope.step = step;
+}]);
+
+
+</script>
+	</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
